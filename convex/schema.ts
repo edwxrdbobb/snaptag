@@ -13,5 +13,7 @@ export default defineSchema({
         }),
         images: v.array(v.id("_storage")),
         userName: v.optional(v.string()),
+        // Admin-assigned relevance rating (1-5 stars). Powers the leaderboard.
+        rating: v.optional(v.number()),
     }),
 });

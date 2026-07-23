@@ -4,7 +4,12 @@ import { api } from "../../convex/_generated/api";
 import { Camera, MapPin, Upload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-export function AddLocationForm() {
+type AddLocationFormProps = {
+    initialCoordinates?: { lat: number; lng: number };
+    onCreated?: () => void;
+};
+
+export function AddLocationForm({ initialCoordinates, onCreated }: AddLocationFormProps = {}) {
     const createLocation = useMutation(api.locations.createLocation);
     const generateUploadUrl = useMutation(api.locations.generateUploadUrl);
 
@@ -21,8 +26,8 @@ export function AddLocationForm() {
         yourName: "",
         category: "",
         description: "",
-        latitude: "",
-        longitude: "",
+        latitude: initialCoordinates ? initialCoordinates.lat.toString() : "",
+        longitude: initialCoordinates ? initialCoordinates.lng.toString() : "",
     });
 
     const categories = [
@@ -146,6 +151,8 @@ export function AddLocationForm() {
             setSelectedImage(null);
             setPreviewUrl(null);
             if (fileInputRef.current) fileInputRef.current.value = "";
+
+            onCreated?.();
 
         } catch (error) {
             console.error("Error submitting form:", error);
