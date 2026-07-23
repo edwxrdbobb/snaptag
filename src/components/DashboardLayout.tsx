@@ -1,9 +1,20 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutGrid, Trophy, Map, PlusCircle, LogOut, MapPin } from "lucide-react";
+import {
+  BarChart3,
+  LayoutGrid,
+  Trophy,
+  Map,
+  PlusCircle,
+  LogOut,
+  MapPin,
+  ShieldCheck,
+} from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 
 const navItems = [
-  { to: "/", label: "Submissions", icon: LayoutGrid, end: true },
+  { to: "/", label: "Insights", icon: BarChart3, end: true },
+  { to: "/submissions", label: "Submissions", icon: LayoutGrid, end: false },
+  { to: "/accuracy", label: "Accuracy", icon: ShieldCheck, end: false },
   { to: "/leaderboard", label: "Leaderboard", icon: Trophy, end: false },
   { to: "/map", label: "Map", icon: Map, end: false },
   { to: "/add", label: "Add Location", icon: PlusCircle, end: false },

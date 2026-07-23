@@ -1,17 +1,61 @@
-import { useState, useRef } from "react";
+import { useState, useRef, type ReactNode } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { Camera, MapPin, Upload, Loader2 } from "lucide-react";
+import {
+    Camera,
+    MapPin,
+    Upload,
+    Loader2,
+    Image as ImageIcon,
+    Tag,
+    Navigation,
+    User,
+    LocateFixed,
+    CheckCircle2,
+    Plus,
+    Utensils,
+    BedDouble,
+    ShoppingBag,
+    MoreHorizontal,
+    type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
+import { uploadToCloudinary } from "../lib/cloudinary";
 
 type AddLocationFormProps = {
     initialCoordinates?: { lat: number; lng: number };
     onCreated?: () => void;
 };
 
+const CATEGORIES: { value: string; label: string; icon: LucideIcon }[] = [
+    { value: "restaurant", label: "Restaurant", icon: Utensils },
+    { value: "hotel", label: "Hotel", icon: BedDouble },
+    { value: "attraction", label: "Attraction", icon: Camera },
+    { value: "shopping", label: "Shopping", icon: ShoppingBag },
+    { value: "other", label: "Other", icon: MoreHorizontal },
+];
+
+function SectionLabel({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
+    return (
+        <div className="flex items-center gap-1.5 mb-4">
+            <Icon className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-[11px] font-extrabold tracking-[0.08em] uppercase text-white/60">
+                {children}
+            </span>
+        </div>
+    );
+}
+
+const cardClass =
+    "bg-white/[0.06] border border-white/10 rounded-[28px] p-6 shadow-2xl";
+const inputRowClass =
+    "flex items-center gap-2.5 bg-slate-950/55 border border-white/10 rounded-2xl px-3.5 focus-within:border-white/25 transition-colors";
+const inputClass =
+    "flex-1 bg-transparent py-3 text-sm text-white placeholder-white/40 outline-none";
+const fieldLabelClass = "block text-[13px] font-bold text-white/60 mb-2 ml-0.5";
+
 export function AddLocationForm({ initialCoordinates, onCreated }: AddLocationFormProps = {}) {
     const createLocation = useMutation(api.locations.createLocation);
-    const generateUploadUrl = useMutation(api.locations.generateUploadUrl);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -20,7 +64,6 @@ export function AddLocationForm({ initialCoordinates, onCreated }: AddLocationFo
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [isCustomCategory, setIsCustomCategory] = useState(false);
 
-    // Form State
     const [formData, setFormData] = useState({
         locationName: "",
         yourName: "",
@@ -30,29 +73,14 @@ export function AddLocationForm({ initialCoordinates, onCreated }: AddLocationFo
         longitude: initialCoordinates ? initialCoordinates.lng.toString() : "",
     });
 
-    const categories = [
-        { value: "restaurant", label: "Restaurant" },
-        { value: "hotel", label: "Hotel" },
-        { value: "attraction", label: "Attraction" },
-        { value: "shopping", label: "Shopping" },
-        { value: "other", label: "Other" },
-    ];
-
-    const handleInputChange = (
-        e: React.ChangeEvent<
-            HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-        >
-    ) => {
-        const { name, value } = e.target;
+    const set = (name: keyof typeof formData, value: string) =>
         setFormData((prev) => ({ ...prev, [name]: value }));
-    };
 
     const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             setSelectedImage(file);
-            const url = URL.createObjectURL(file);
-            setPreviewUrl(url);
+            setPreviewUrl(URL.createObjectURL(file));
         }
     };
 
@@ -61,15 +89,7 @@ export function AddLocationForm({ initialCoordinates, onCreated }: AddLocationFo
             toast.error("Geolocation is not supported by your browser");
             return;
         }
-
         toast.info("Getting current location...");
-
-        const options = {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-        };
-
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 setFormData((prev) => ({
@@ -80,50 +100,30 @@ export function AddLocationForm({ initialCoordinates, onCreated }: AddLocationFo
                 toast.success("Location found");
             },
             (error) => {
-                console.error("Error getting location:", error);
                 let errorMessage = "Unable to retrieve your location";
-                switch (error.code) {
-                    case error.PERMISSION_DENIED:
-                        errorMessage = "User denied the request for Geolocation.";
-                        break;
-                    case error.POSITION_UNAVAILABLE:
-                        errorMessage = "Location information is unavailable.";
-                        break;
-                    case error.TIMEOUT:
-                        errorMessage = "The request to get user location timed out.";
-                        break;
-                }
+                if (error.code === error.PERMISSION_DENIED)
+                    errorMessage = "Location permission denied.";
+                else if (error.code === error.POSITION_UNAVAILABLE)
+                    errorMessage = "Location information is unavailable.";
+                else if (error.code === error.TIMEOUT)
+                    errorMessage = "The request to get your location timed out.";
                 toast.error(errorMessage);
             },
-            options
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedImage) {
-            toast.error("Please select an image");
-            return;
-        }
+        if (!selectedImage) return toast.error("Please add a photo");
+        if (!formData.locationName.trim()) return toast.error("Please enter a location name");
+        if (!formData.category.trim()) return toast.error("Please choose a category");
+        if (!formData.latitude.trim() || !formData.longitude.trim())
+            return toast.error("Please provide coordinates");
 
         setIsSubmitting(true);
-
         try {
-            // 1. Upload image
-            const postUrl = await generateUploadUrl();
-            const result = await fetch(postUrl, {
-                method: "POST",
-                headers: { "Content-Type": selectedImage.type },
-                body: selectedImage,
-            });
-
-            if (!result.ok) {
-                throw new Error(`Upload failed: ${result.statusText}`);
-            }
-
-            const { storageId } = await result.json();
-
-            // 2. Create location
+            const imageUrl = await uploadToCloudinary(selectedImage);
             await createLocation({
                 name: formData.locationName,
                 description: formData.description,
@@ -133,13 +133,11 @@ export function AddLocationForm({ initialCoordinates, onCreated }: AddLocationFo
                     lat: parseFloat(formData.latitude),
                     lng: parseFloat(formData.longitude),
                 },
-                images: [storageId],
+                images: [imageUrl],
                 userName: formData.yourName,
             });
 
             toast.success("Location added successfully!");
-
-            // Reset form
             setFormData({
                 locationName: "",
                 yourName: "",
@@ -151,9 +149,7 @@ export function AddLocationForm({ initialCoordinates, onCreated }: AddLocationFo
             setSelectedImage(null);
             setPreviewUrl(null);
             if (fileInputRef.current) fileInputRef.current.value = "";
-
             onCreated?.();
-
         } catch (error) {
             console.error("Error submitting form:", error);
             toast.error("Failed to add location. Please try again.");
@@ -162,225 +158,196 @@ export function AddLocationForm({ initialCoordinates, onCreated }: AddLocationFo
         }
     };
 
+    const hasCoords = !!formData.latitude && !!formData.longitude;
+
     return (
-        <div className="max-w-md mx-auto glass-panel text-white p-8 rounded-3xl shadow-2xl font-sans animate-in fade-in zoom-in duration-500">
-            <h2 className="text-2xl font-semibold mb-6 text-center tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-200 to-emerald-200">New Snaptag</h2>
-            <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Location Image */}
-                <div className="space-y-3">
-                    <label className="block text-sm font-medium ml-1 text-white/80">Location Image</label>
-                    <div
-                        className="border-2 border-dashed border-white/20 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer hover:border-white/40 hover:bg-white/5 transition-all duration-300 relative h-56 group overflow-hidden"
-                        onClick={() => fileInputRef.current?.click()}
-                    >
-                        {previewUrl ? (
-                            <img
-                                src={previewUrl}
-                                alt="Preview"
-                                className="absolute inset-0 w-full h-full object-cover rounded-lg"
-                            />
-                        ) : (
-                            <div className="text-center space-y-2">
-                                <div className="bg-slate-700 p-3 rounded-full w-12 h-12 flex items-center justify-center mx-auto">
-                                    <Upload className="w-6 h-6 text-slate-300" />
-                                </div>
-                                <span className="text-sm text-slate-400">Choose a photo</span>
-                            </div>
-                        )}
-                        <input
-                            type="file"
-                            ref={fileInputRef}
-                            onChange={handleImageSelect}
-                            accept="image/*"
-                            className="hidden"
-                        />
-                        <input
-                            type="file"
-                            ref={cameraInputRef}
-                            onChange={handleImageSelect}
-                            accept="image/*"
-                            capture="environment"
-                            className="hidden"
-                        />
-                    </div>
-
-                    <button
-                        type="button"
-                        className="glass-button w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium text-white/90 hover:text-white"
-                        onClick={() => {
-                            // Try camera first, fallback handled by browser or user choice if camera not available/supported
-                            if (cameraInputRef.current) {
-                                cameraInputRef.current.click();
-                            }
-                        }}
-                    >
-                        <Camera className="w-4 h-4" />
-                        Take a photo
-                    </button>
-                </div>
-
-                {/* Location Name */}
-                <div className="space-y-3">
-                    <label className="block text-sm font-bold ml-1 text-white/80">Location Name</label>
-                    <input
-                        type="text"
-                        name="locationName"
-                        value={formData.locationName}
-                        onChange={handleInputChange}
-                        placeholder="Enter location name"
-                        className="w-full glass-input rounded-xl px-4 py-3 text-sm"
-                        required
-                    />
-                </div>
-
-                {/* Your Name (Optional) */}
-                <div className="space-y-3">
-                    <label className="block text-sm font-bold ml-1 text-white/80">Your Name (Optional)</label>
-                    <input
-                        type="text"
-                        name="yourName"
-                        value={formData.yourName}
-                        onChange={handleInputChange}
-                        placeholder="Enter your name"
-                        className="w-full glass-input rounded-xl px-4 py-3 text-sm"
-                    />
-                </div>
-
-                {/* Category */}
-                <div className="space-y-3">
-                    <label className="block text-sm font-bold ml-1 text-white/80">Category</label>
-                    {isCustomCategory ? (
-                        <div className="space-y-2">
-                            <input
-                                type="text"
-                                name="category"
-                                value={formData.category}
-                                onChange={handleInputChange}
-                                placeholder="Enter custom category"
-                                className="w-full glass-input rounded-xl px-4 py-3 text-sm"
-                                required
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setIsCustomCategory(false)}
-                                className="text-sm text-blue-300 hover:text-blue-200 ml-1"
-                            >
-                                Back to selection
-                            </button>
-                        </div>
-                    ) : (
+        <form onSubmit={handleSubmit} className="space-y-4 animate-in fade-in duration-500">
+            {/* Photo */}
+            <div className={cardClass}>
+                <SectionLabel icon={ImageIcon}>Photo</SectionLabel>
+                <div
+                    className="relative h-52 rounded-2xl overflow-hidden bg-slate-950/55 border border-white/10 flex items-center justify-center cursor-pointer group mb-3"
+                    onClick={() => fileInputRef.current?.click()}
+                >
+                    {previewUrl ? (
                         <>
-                            <div className="relative">
-                                <select
-                                    name="category"
-                                    value={formData.category}
-                                    onChange={handleInputChange}
-                                    className="w-full glass-input rounded-xl px-4 py-3 text-sm appearance-none"
-                                    required
-                                >
-                                    <option value="" disabled className="bg-slate-900 text-gray-400">Select a category</option>
-                                    {categories.map((cat) => (
-                                        <option key={cat.value} value={cat.value} className="bg-slate-900">{cat.label}</option>
-                                    ))}
-                                </select>
-                                <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-white/50">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                                </div>
+                            <img src={previewUrl} alt="Preview" className="absolute inset-0 w-full h-full object-cover" />
+                            <div className="absolute bottom-3 right-3 flex items-center gap-1.5 bg-black/60 backdrop-blur-sm px-2.5 py-1.5 rounded-full text-xs text-white font-medium">
+                                <ImageIcon className="w-3.5 h-3.5" /> Change
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setIsCustomCategory(true);
-                                    setFormData(prev => ({ ...prev, category: "" }));
-                                }}
-                                className="glass-button w-full text-left px-4 py-2 rounded-xl text-sm text-white/70 hover:text-white mt-2 flex items-center gap-2"
-                            >
-                                <span className="text-lg leading-none">+</span> Add custom category
-                            </button>
                         </>
+                    ) : (
+                        <div className="flex flex-col items-center gap-2.5">
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-emerald-500 flex items-center justify-center">
+                                <Upload className="w-6 h-6 text-white" />
+                            </div>
+                            <span className="text-sm text-white/60">Choose from library</span>
+                        </div>
                     )}
+                    <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" />
+                    <input type="file" ref={cameraInputRef} onChange={handleImageSelect} accept="image/*" capture="environment" className="hidden" />
                 </div>
+                <button
+                    type="button"
+                    onClick={() => cameraInputRef.current?.click()}
+                    className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-sm font-semibold text-white bg-white/[0.06] border border-white/10 hover:bg-white/10 transition-colors"
+                >
+                    <Camera className="w-4.5 h-4.5" /> Take a photo
+                </button>
+            </div>
 
-                {/* Description */}
-                <div className="space-y-3">
-                    <label className="block text-sm font-bold ml-1 text-white/80">Description</label>
-                    <textarea
-                        name="description"
-                        value={formData.description}
-                        onChange={handleInputChange}
-                        placeholder="Describe this location..."
-                        rows={4}
-                        className="w-full glass-input rounded-xl px-4 py-3 text-sm resize-none"
-                        required
+            {/* Details */}
+            <div className={cardClass}>
+                <SectionLabel icon={Tag}>Details</SectionLabel>
+
+                <label className={fieldLabelClass}>Location name</label>
+                <div className={inputRowClass}>
+                    <MapPin className="w-4.5 h-4.5 text-white/40" />
+                    <input
+                        value={formData.locationName}
+                        onChange={(e) => set("locationName", e.target.value)}
+                        placeholder="e.g. Lumley Beach"
+                        className={inputClass}
                     />
                 </div>
 
-                {/* Latitude & Longitude */}
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-3">
-                        <label className="block text-sm font-bold ml-1 text-white/80">Latitude</label>
-                        <input
-                            type="number"
-                            name="latitude"
-                            value={formData.latitude}
-                            onChange={handleInputChange}
-                            step="any"
-                            placeholder="Latitude"
-                            className="w-full glass-input rounded-xl px-4 py-3 text-sm"
-                            required
-                        />
-                    </div>
-                    <div className="space-y-3">
-                        <label className="block text-sm font-bold ml-1 text-white/80">Longitude</label>
-                        <input
-                            type="number"
-                            name="longitude"
-                            value={formData.longitude}
-                            onChange={handleInputChange}
-                            step="any"
-                            placeholder="Longitude"
-                            className="w-full glass-input rounded-xl px-4 py-3 text-sm"
-                            required
-                        />
-                    </div>
+                <label className={`${fieldLabelClass} mt-4`}>Your name (optional)</label>
+                <div className={inputRowClass}>
+                    <User className="w-4.5 h-4.5 text-white/40" />
+                    <input
+                        value={formData.yourName}
+                        onChange={(e) => set("yourName", e.target.value)}
+                        placeholder="Who's tagging this?"
+                        className={inputClass}
+                    />
                 </div>
 
-                {/* Location Info */}
-                <div className="text-xs text-white/50 ml-1">
-                    You can enter coordinates manually (e.g., lat: 37.7749, lng: -122.4194 for San Francisco)
-                </div>
+                <label className={`${fieldLabelClass} mt-4`}>Category</label>
+                {isCustomCategory ? (
+                    <>
+                        <div className={inputRowClass}>
+                            <Tag className="w-4.5 h-4.5 text-white/40" />
+                            <input
+                                value={formData.category}
+                                onChange={(e) => set("category", e.target.value)}
+                                placeholder="Enter a category"
+                                className={inputClass}
+                            />
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => { setIsCustomCategory(false); set("category", ""); }}
+                            className="text-[13px] text-blue-300 hover:text-blue-200 mt-2 ml-0.5"
+                        >
+                            Back to presets
+                        </button>
+                    </>
+                ) : (
+                    <div className="flex flex-wrap gap-2">
+                        {CATEGORIES.map((cat) => {
+                            const active = formData.category === cat.value;
+                            const Icon = cat.icon;
+                            return (
+                                <button
+                                    key={cat.value}
+                                    type="button"
+                                    onClick={() => set("category", cat.value)}
+                                    className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-full text-[13px] font-semibold transition-all ${
+                                        active
+                                            ? "bg-gradient-to-br from-blue-500 to-emerald-500 text-white shadow-lg shadow-emerald-500/20"
+                                            : "bg-slate-950/55 border border-white/10 text-white/60 hover:text-white hover:border-white/25"
+                                    }`}
+                                >
+                                    <Icon className="w-3.5 h-3.5" />
+                                    {cat.label}
+                                </button>
+                            );
+                        })}
+                        <button
+                            type="button"
+                            onClick={() => { setIsCustomCategory(true); set("category", ""); }}
+                            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-full text-[13px] font-semibold bg-slate-950/55 border border-white/10 text-white/60 hover:text-white hover:border-white/25 transition-all"
+                        >
+                            <Plus className="w-3.5 h-3.5" /> Custom
+                        </button>
+                    </div>
+                )}
 
-                {/* Get Current Location Button */}
+                <label className={`${fieldLabelClass} mt-4`}>Description</label>
+                <div className={`${inputRowClass} items-start`}>
+                    <textarea
+                        value={formData.description}
+                        onChange={(e) => set("description", e.target.value)}
+                        placeholder="Describe this place…"
+                        rows={3}
+                        className={`${inputClass} resize-none pt-3`}
+                    />
+                </div>
+            </div>
+
+            {/* Coordinates */}
+            <div className={cardClass}>
+                <SectionLabel icon={Navigation}>Coordinates</SectionLabel>
+
                 <button
                     type="button"
                     onClick={handleGetCurrentLocation}
-                    className="glass-button w-full font-medium py-3 rounded-xl flex items-center justify-center gap-2 text-white transition-all hover:scale-[1.02] active:scale-95"
+                    className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-sm font-semibold text-white bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors mb-4"
                 >
-                    <MapPin className="w-4 h-4 text-emerald-400" />
-                    Get Current Location
+                    <LocateFixed className="w-4.5 h-4.5 text-emerald-400" />
+                    {hasCoords ? "Update current location" : "Use my current location"}
+                    {hasCoords && <CheckCircle2 className="w-4.5 h-4.5 text-emerald-400" />}
                 </button>
 
-                {/* Note */}
-                <p className="text-xs text-slate-400">
-                    Note: Location services require permission and HTTPS. If unavailable, please enter coordinates manually.
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className={fieldLabelClass}>Latitude</label>
+                        <div className={inputRowClass}>
+                            <input
+                                type="number"
+                                step="any"
+                                value={formData.latitude}
+                                onChange={(e) => set("latitude", e.target.value)}
+                                placeholder="8.4657"
+                                className={inputClass}
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <label className={fieldLabelClass}>Longitude</label>
+                        <div className={inputRowClass}>
+                            <input
+                                type="number"
+                                step="any"
+                                value={formData.longitude}
+                                onChange={(e) => set("longitude", e.target.value)}
+                                placeholder="-13.2317"
+                                className={inputClass}
+                            />
+                        </div>
+                    </div>
+                </div>
+                <p className="text-xs text-white/40 mt-3 ml-0.5">
+                    Freetown example — lat: 8.4657, lng: -13.2317
                 </p>
+            </div>
 
-                {/* Submit Button */}
-                <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-500 hover:to-emerald-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg hover:shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transform hover:-translate-y-0.5"
-                >
-                    {isSubmitting ? (
-                        <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Submitting...
-                        </>
-                    ) : (
-                        "Submit Location"
-                    )}
-                </button>
-            </form>
-        </div>
+            {/* Submit */}
+            <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full bg-gradient-to-r from-blue-500 to-emerald-500 hover:from-blue-400 hover:to-emerald-400 text-white font-extrabold py-4 rounded-2xl transition-all shadow-lg shadow-blue-500/20 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+                {isSubmitting ? (
+                    <>
+                        <Loader2 className="w-5 h-5 animate-spin" /> Submitting…
+                    </>
+                ) : (
+                    <>
+                        <CheckCircle2 className="w-5 h-5" /> Submit location
+                    </>
+                )}
+            </button>
+        </form>
     );
 }

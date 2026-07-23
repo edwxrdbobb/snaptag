@@ -1,9 +1,12 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { MapPin, Trash2, User, Search, ImageOff, Tag } from "lucide-react";
+import { MapPin, Trash2, Pencil, Copy, User, Search, ImageOff, Tag } from "lucide-react";
 import { toast } from "sonner";
 import { StarRating } from "../components/StarRating";
+import { AccuracyBadge } from "../components/AccuracyBadge";
+import { EditLocationModal } from "../components/EditLocationModal";
+import type { LocationDoc } from "../lib/locations";
 import type { Id } from "../../convex/_generated/dataModel";
 
 export function SubmissionsPage() {
@@ -11,6 +14,7 @@ export function SubmissionsPage() {
   const setRating = useMutation(api.locations.setRating);
   const deleteLocation = useMutation(api.locations.deleteLocation);
   const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState<LocationDoc | null>(null);
 
   const filtered = useMemo(() => {
     if (!locations) return [];
@@ -31,6 +35,16 @@ export function SubmissionsPage() {
       toast.success(`Rated ${rating} star${rating > 1 ? "s" : ""}`);
     } catch {
       toast.error("Failed to save rating");
+    }
+  };
+
+  const handleCopyCoords = async (lat: number, lng: number) => {
+    const text = `${lat}, ${lng}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`Copied ${text}`);
+    } catch {
+      toast.error("Couldn't copy coordinates");
     }
   };
 
@@ -117,6 +131,9 @@ export function SubmissionsPage() {
                   <p className="text-sm text-white/60 mt-1 line-clamp-2">
                     {loc.description}
                   </p>
+                  <div className="mt-2">
+                    <AccuracyBadge verification={loc.verification} />
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-3 text-xs text-white/50 mt-auto">
@@ -129,6 +146,16 @@ export function SubmissionsPage() {
                     {loc.coordinates.lat.toFixed(4)},{" "}
                     {loc.coordinates.lng.toFixed(4)}
                   </span>
+                  <button
+                    onClick={() =>
+                      handleCopyCoords(loc.coordinates.lat, loc.coordinates.lng)
+                    }
+                    className="text-white/40 hover:text-white transition-colors p-1 rounded-md hover:bg-white/10"
+                    aria-label="Copy coordinates"
+                    title="Copy coordinates"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </button>
                 </div>
 
                 <div className="flex items-center justify-between border-t border-white/10 pt-3">
@@ -136,18 +163,34 @@ export function SubmissionsPage() {
                     value={loc.rating ?? 0}
                     onChange={(r) => handleRate(loc._id, r)}
                   />
-                  <button
-                    onClick={() => handleDelete(loc._id, loc.name)}
-                    className="text-white/40 hover:text-red-400 transition-colors p-1.5 rounded-lg hover:bg-red-500/10"
-                    aria-label="Delete submission"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setEditing(loc)}
+                      className="text-white/40 hover:text-blue-300 transition-colors p-1.5 rounded-lg hover:bg-blue-500/10"
+                      aria-label="Edit submission"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(loc._id, loc.name)}
+                      className="text-white/40 hover:text-red-400 transition-colors p-1.5 rounded-lg hover:bg-red-500/10"
+                      aria-label="Delete submission"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           ))}
         </div>
+      )}
+
+      {editing && (
+        <EditLocationModal
+          location={editing}
+          onClose={() => setEditing(null)}
+        />
       )}
     </div>
   );

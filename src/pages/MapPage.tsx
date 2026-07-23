@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -13,6 +13,16 @@ import type { Id } from "../../convex/_generated/dataModel";
 
 // Freetown, Sierra Leone.
 const FREETOWN: [number, number] = [8.4657, -13.2317];
+
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
+
+const MAP_STYLES = [
+  { id: "streets-v12", label: "Streets" },
+  { id: "satellite-streets-v12", label: "Satellite" },
+  { id: "dark-v11", label: "Dark" },
+] as const;
+
+type MapStyleId = (typeof MAP_STYLES)[number]["id"];
 
 const CATEGORY_COLORS: Record<string, string> = {
   restaurant: "#f97316",
@@ -35,16 +45,33 @@ function pinIcon(color: string) {
   });
 }
 
-// Fit the map to all markers whenever the data changes.
-function FitBounds({ locations }: { locations: LocationDoc[] }) {
+// Fix Leaflet sizing (the flex/vh container isn't measured yet at init, which
+// leaves gray tiles) and fit the map to all markers whenever the data changes.
+function MapController({ locations }: { locations: LocationDoc[] }) {
   const map = useMap();
-  useMemo(() => {
-    if (locations.length === 0) return;
-    const bounds = L.latLngBounds(
-      locations.map((l) => [l.coordinates.lat, l.coordinates.lng] as [number, number])
-    );
-    map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
+
+  useEffect(() => {
+    // Re-measure once layout settles, then again on any container resize.
+    const fit = () => {
+      map.invalidateSize();
+      if (locations.length > 0) {
+        const bounds = L.latLngBounds(
+          locations.map(
+            (l) => [l.coordinates.lat, l.coordinates.lng] as [number, number]
+          )
+        );
+        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
+      }
+    };
+
+    const timer = setTimeout(fit, 150);
+    window.addEventListener("resize", fit);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("resize", fit);
+    };
   }, [locations, map]);
+
   return null;
 }
 
@@ -64,6 +91,7 @@ export function MapPage() {
   const setRating = useMutation(api.locations.setRating);
   const navigate = useNavigate();
   const [pending, setPending] = useState<{ lat: number; lng: number } | null>(null);
+  const [mapStyle, setMapStyle] = useState<MapStyleId>("streets-v12");
 
   const points = useMemo(
     () => (locations ?? []).filter((l) => l.imageUrls !== undefined),
@@ -94,20 +122,47 @@ export function MapPage() {
         </div>
       </header>
 
-      <div className="glass-panel rounded-2xl overflow-hidden flex-1 min-h-[70vh] relative">
+      <div className="glass-panel rounded-2xl overflow-hidden relative" style={{ height: "75vh" }}>
+        {MAPBOX_TOKEN && (
+          <div className="absolute top-3 right-3 z-[1000] flex gap-1 p-1 rounded-xl bg-slate-900/80 backdrop-blur-md border border-white/10 shadow-lg">
+            {MAP_STYLES.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setMapStyle(s.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  mapStyle === s.id
+                    ? "bg-white/20 text-white"
+                    : "text-white/60 hover:text-white hover:bg-white/10"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
         <MapContainer
           center={FREETOWN}
           zoom={13}
           scrollWheelZoom
-          className="w-full h-full"
-          style={{ minHeight: "70vh" }}
+          className="w-full"
+          style={{ height: "100%", width: "100%" }}
         >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          {MAPBOX_TOKEN ? (
+            <TileLayer
+              key={mapStyle}
+              attribution='&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              url={`https://api.mapbox.com/styles/v1/mapbox/${mapStyle}/tiles/512/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`}
+              tileSize={512}
+              zoomOffset={-1}
+            />
+          ) : (
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+          )}
 
-          <FitBounds locations={points} />
+          <MapController locations={points} />
           <ClickToTag onPick={setPending} />
 
           {points.map((loc) => (

@@ -32,7 +32,7 @@ export function AddLocationPage() {
 
       <AddLocationForm
         initialCoordinates={initialCoordinates}
-        onCreated={() => navigate("/")}
+        onCreated={() => navigate("/submissions")}
       />
     </div>
   );
