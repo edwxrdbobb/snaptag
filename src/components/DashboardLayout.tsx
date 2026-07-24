@@ -13,7 +13,7 @@ import { useAuth } from "../auth/AuthContext";
 
 const navItems = [
   { to: "/", label: "Insights", icon: BarChart3, end: true },
-  { to: "/submissions", label: "Submissions", icon: LayoutGrid, end: false },
+  { to: "/submissions", label: "Locations", icon: LayoutGrid, end: false },
   { to: "/accuracy", label: "Accuracy", icon: ShieldCheck, end: false },
   { to: "/leaderboard", label: "Leaderboard", icon: Trophy, end: false },
   { to: "/map", label: "Map", icon: Map, end: false },

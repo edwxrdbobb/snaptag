@@ -34,6 +34,15 @@ export default defineSchema({
         ),
     }),
 
+    // Shared category list, so new/custom categories propagate to every client
+    // (web + mobile) without an app update.
+    categories: defineTable({
+        key: v.string(), // lowercased dedupe key
+        value: v.string(), // value stored on locations
+        label: v.string(), // display label
+        createdAt: v.number(),
+    }).index("by_key", ["key"]),
+
     // Mobile app accounts (simple username + password).
     users: defineTable({
         username: v.string(), // lowercased, unique

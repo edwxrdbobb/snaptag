@@ -1,5 +1,5 @@
 import { useState, useRef, type ReactNode } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import {
     Camera,
@@ -27,13 +27,14 @@ type AddLocationFormProps = {
     onCreated?: () => void;
 };
 
-const CATEGORIES: { value: string; label: string; icon: LucideIcon }[] = [
-    { value: "restaurant", label: "Restaurant", icon: Utensils },
-    { value: "hotel", label: "Hotel", icon: BedDouble },
-    { value: "attraction", label: "Attraction", icon: Camera },
-    { value: "shopping", label: "Shopping", icon: ShoppingBag },
-    { value: "other", label: "Other", icon: MoreHorizontal },
-];
+// Icons for the well-known presets; custom categories fall back to a tag icon.
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+    restaurant: Utensils,
+    hotel: BedDouble,
+    attraction: Camera,
+    shopping: ShoppingBag,
+    other: MoreHorizontal,
+};
 
 function SectionLabel({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
     return (
@@ -56,6 +57,7 @@ const fieldLabelClass = "block text-[13px] font-bold text-white/60 mb-2 ml-0.5";
 
 export function AddLocationForm({ initialCoordinates, onCreated }: AddLocationFormProps = {}) {
     const createLocation = useMutation(api.locations.createLocation);
+    const categories = useQuery(api.categories.listCategories) ?? [];
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -244,9 +246,9 @@ export function AddLocationForm({ initialCoordinates, onCreated }: AddLocationFo
                     </>
                 ) : (
                     <div className="flex flex-wrap gap-2">
-                        {CATEGORIES.map((cat) => {
+                        {categories.map((cat) => {
                             const active = formData.category === cat.value;
-                            const Icon = cat.icon;
+                            const Icon = CATEGORY_ICONS[cat.value] ?? Tag;
                             return (
                                 <button
                                     key={cat.value}

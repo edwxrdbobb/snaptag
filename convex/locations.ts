@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { registerCategory } from "./categories";
 import type { Id } from "./_generated/dataModel";
 
 // Images are Cloudinary secure URLs (start with http). Legacy rows may still
@@ -52,6 +53,8 @@ export const createLocation = mutation({
             userId: args.userId,
             metadata: args.metadata,
         });
+        // Register the category so it's available to every client next time.
+        await registerCategory(ctx, args.category);
         // Verify the name against OpenStreetMap in the background.
         await ctx.scheduler.runAfter(0, internal.verify.verifyLocation, {
             locationId,
@@ -97,6 +100,24 @@ export const listLocations = query({
                 };
             })
         );
+    },
+});
+
+// Move a pin to new coordinates (used by "Suggest best position" on the map)
+// and re-run the OpenStreetMap accuracy check for the new spot.
+export const setCoordinates = mutation({
+    args: {
+        id: v.id("locations"),
+        lat: v.number(),
+        lng: v.number(),
+    },
+    handler: async (ctx, args) => {
+        await ctx.db.patch(args.id, {
+            coordinates: { lat: args.lat, lng: args.lng },
+        });
+        await ctx.scheduler.runAfter(0, internal.verify.verifyLocation, {
+            locationId: args.id,
+        });
     },
 });
 
@@ -176,6 +197,9 @@ export const updateLocation = mutation({
         } else {
             await ctx.db.patch(id, fields);
         }
+
+        // Capture the category in case it's a new custom one.
+        await registerCategory(ctx, fields.category);
 
         // Re-verify against OpenStreetMap if the name or coordinates changed.
         if (nameOrCoordsChanged) {

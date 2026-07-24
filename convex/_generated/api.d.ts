@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as categories from "../categories.js";
 import type * as locations from "../locations.js";
 import type * as users from "../users.js";
 import type * as verify from "../verify.js";
@@ -19,6 +20,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  categories: typeof categories;
   locations: typeof locations;
   users: typeof users;
   verify: typeof verify;
