@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 
 // NOTE: This is lightweight username/password auth for the mobile app — salted
 // SHA-256, not bcrypt. Fine for a community tagging app; not for sensitive data.
@@ -23,6 +23,39 @@ async function hashPassword(password: string, salt: string): Promise<string> {
     const digest = await crypto.subtle.digest("SHA-256", data);
     return toHex(digest);
 }
+
+// Public profile info for the signed-in user (never returns salt/hash).
+export const getProfile = query({
+    args: { userId: v.id("users") },
+    handler: async (ctx, args) => {
+        const user = await ctx.db.get(args.userId);
+        if (!user) return null;
+        return {
+            _id: user._id,
+            username: user.username,
+            displayName: user.displayName,
+            deviceName: user.deviceName,
+            createdAt: user.createdAt,
+            lastLoginAt: user.lastLoginAt,
+        };
+    },
+});
+
+// Update editable profile fields (currently just the display name).
+export const updateProfile = mutation({
+    args: {
+        userId: v.id("users"),
+        displayName: v.string(),
+    },
+    handler: async (ctx, args) => {
+        const name = args.displayName.trim();
+        if (name.length < 2) {
+            throw new Error("Name must be at least 2 characters");
+        }
+        await ctx.db.patch(args.userId, { displayName: name });
+        return { displayName: name };
+    },
+});
 
 // Sign in if the account exists (password must match), otherwise create it.
 export const signInOrUp = mutation({
